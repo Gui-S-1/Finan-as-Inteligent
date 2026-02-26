@@ -29,10 +29,10 @@ function buildCashFlow(monthKey: string, transactions: Transaction[], bills: Bil
     const day = Math.min(r.payDay, totalDays);
     const entry = dayMap.get(day)!;
     entry.inflow += r.amount;
-    entry.labels.push(`${r.title}: +${formatCurrency(r.amount)}`);
+    entry.labels.push(`\u{1F4B0} ${r.title}: +${formatCurrency(r.amount)}`);
   });
 
-  // Transactions
+  // Transactions (including retroactive ones)
   transactions
     .filter((t) => t.date.startsWith(monthKey))
     .forEach((t) => {
@@ -48,20 +48,37 @@ function buildCashFlow(monthKey: string, transactions: Transaction[], bills: Bil
       }
     });
 
-  // Bills
+  // Bills: show actual payments on their dates + remaining on due date
   bills
-    .filter((b) => b.dueDate.startsWith(monthKey) && b.status !== 'paid')
+    .filter((b) => b.dueDate.startsWith(monthKey))
     .forEach((b) => {
-      const day = new Date(b.dueDate + 'T00:00:00').getDate();
-      const entry = dayMap.get(day);
-      if (!entry) return;
+      // Actual payments already made (retroactive support)
+      b.payments.forEach((p) => {
+        if (!p.date.startsWith(monthKey)) return;
+        const pDay = new Date(p.date + 'T00:00:00').getDate();
+        const pe = dayMap.get(pDay);
+        if (!pe) return;
+        if (b.type === 'pay') {
+          pe.outflow += p.amount;
+          pe.labels.push(`Pgto ${b.title}: -${formatCurrency(p.amount)}`);
+        } else {
+          pe.inflow += p.amount;
+          pe.labels.push(`Receb ${b.title}: +${formatCurrency(p.amount)}`);
+        }
+      });
+      // Remaining amount still expected on due date
       const remaining = billRemaining(b);
-      if (b.type === 'pay') {
-        entry.outflow += remaining;
-        entry.labels.push(`${b.title}: -${formatCurrency(remaining)}`);
-      } else {
-        entry.inflow += remaining;
-        entry.labels.push(`${b.title}: +${formatCurrency(remaining)}`);
+      if (remaining > 0) {
+        const day = new Date(b.dueDate + 'T00:00:00').getDate();
+        const entry = dayMap.get(day);
+        if (!entry) return;
+        if (b.type === 'pay') {
+          entry.outflow += remaining;
+          entry.labels.push(`${b.title} (pendente): -${formatCurrency(remaining)}`);
+        } else {
+          entry.inflow += remaining;
+          entry.labels.push(`${b.title} (pendente): +${formatCurrency(remaining)}`);
+        }
       }
     });
 

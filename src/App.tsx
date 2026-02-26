@@ -110,8 +110,11 @@ export default function App() {
   const addTransaction = useCallback((item: Transaction) => {
     setState((s) => ({ ...s, transactions: [...s.transactions, item] }));
     addTransactionDB(item);
-    showToast(`Lancamento "${item.title}" adicionado!`);
-  }, [showToast]);
+    // Auto-navigate to the transaction's month so user sees it
+    const txMonth = item.date.slice(0, 7);
+    if (txMonth !== monthKey) setMonthKey(txMonth);
+    showToast(`Lancamento "${item.title}" adicionado em ${formatDate(item.date)}!`);
+  }, [monthKey, showToast]);
 
   const deleteTransaction = useCallback((id: string) => {
     setState((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
