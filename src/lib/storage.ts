@@ -8,7 +8,7 @@ import { deriveBillStatus } from './finance';
 
 const LS_KEY = 'neuro-ledger-v2';
 
-const blank: AppState = { transactions: [], bills: [], monthlyBudget: 0 };
+const blank: AppState = { transactions: [], bills: [], monthlyBudget: 0, recurringIncomes: [], savingsGoals: [] };
 
 /* ─── localStorage helpers ────────────────────────────── */
 
@@ -28,6 +28,8 @@ function lsLoad(): AppState {
           }))
         : [],
       monthlyBudget: typeof p.monthlyBudget === 'number' ? p.monthlyBudget : 0,
+      recurringIncomes: Array.isArray(p.recurringIncomes) ? p.recurringIncomes : [],
+      savingsGoals: Array.isArray(p.savingsGoals) ? p.savingsGoals : [],
     };
   } catch {
     return blank;
@@ -103,7 +105,7 @@ export async function loadState(): Promise<AppState> {
     const budgetRow = (settRes.data ?? []).find((r: any) => r.key === 'monthlyBudget');
     const monthlyBudget = budgetRow ? Number(budgetRow.value) : local.monthlyBudget;
 
-    const state: AppState = { transactions, bills, monthlyBudget };
+    const state: AppState = { transactions, bills, monthlyBudget, recurringIncomes: local.recurringIncomes, savingsGoals: local.savingsGoals };
     lsSave(state); // cache
     return state;
   } catch {

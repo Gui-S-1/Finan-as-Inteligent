@@ -64,6 +64,26 @@ export interface AppState {
   transactions: Transaction[];
   bills: Bill[];
   monthlyBudget: number;
+  recurringIncomes: RecurringIncome[];
+  savingsGoals: SavingsGoal[];
+}
+
+export interface RecurringIncome {
+  id: string;
+  title: string;
+  amount: number;
+  payDay: number;          // dia do mes (1–31)
+  frequency: 'monthly' | 'biweekly' | 'weekly';
+  active: boolean;
+}
+
+export interface SavingsGoal {
+  id: string;
+  title: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: string;
+  createdAt: string;
 }
 
 export interface MonthlySnapshot {

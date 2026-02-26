@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BillCard } from './components/BillCard';
 import { BillForm } from './components/BillForm';
 import { CalendarTimeline } from './components/CalendarTimeline';
+import { CashFlowTimeline } from './components/CashFlowTimeline';
 import { HealthScore } from './components/HealthScore';
 import { ArrowDownIcon, ArrowUpIcon, CalendarIcon, PulseIcon, TrashIcon, WalletIcon } from './components/InlineIcons';
 import { KpiCard } from './components/KpiCard';
 import { MonthlyChart } from './components/MonthlyChart';
 import { QuickInsights } from './components/QuickInsights';
+import { RecurringIncomePanel } from './components/RecurringIncomePanel';
 import { ReminderBanner, requestNotificationPermission, sendBillReminder } from './components/ReminderBanner';
+import { SavingsGoals } from './components/SavingsGoals';
+import { SmartAdvisor } from './components/SmartAdvisor';
 import { TechBackground } from './components/TechBackground';
 import { TransactionForm } from './components/TransactionForm';
 import { exportCSV } from './lib/exportCSV';
@@ -35,10 +39,10 @@ import {
   deleteAllDataDB,
   deleteAllDataLocal,
 } from './lib/storage';
-import type { AppState, Bill, Payment, Transaction } from './types/finance';
+import type { AppState, Bill, Payment, RecurringIncome, SavingsGoal, Transaction } from './types/finance';
 import { CATEGORY_LABELS } from './types/finance';
 
-const blankState: AppState = { transactions: [], bills: [], monthlyBudget: 0 };
+const blankState: AppState = { transactions: [], bills: [], monthlyBudget: 0, recurringIncomes: [], savingsGoals: [] };
 
 export default function App() {
   const [state, setState] = useState<AppState>(blankState);
@@ -154,6 +158,45 @@ export default function App() {
     setConfirmDelete(false);
   }, []);
 
+  /* ─── Recurring income actions ─────────────────── */
+  const addRecurringIncome = useCallback((income: RecurringIncome) => {
+    setState((s) => ({ ...s, recurringIncomes: [...s.recurringIncomes, income] }));
+    showToast(`Renda "${income.title}" cadastrada! Dia ${income.payDay} de cada mes.`);
+  }, [showToast]);
+
+  const deleteRecurringIncome = useCallback((id: string) => {
+    setState((s) => ({ ...s, recurringIncomes: s.recurringIncomes.filter((r) => r.id !== id) }));
+  }, []);
+
+  const toggleRecurringIncome = useCallback((id: string) => {
+    setState((s) => ({
+      ...s,
+      recurringIncomes: s.recurringIncomes.map((r) =>
+        r.id === id ? { ...r, active: !r.active } : r
+      ),
+    }));
+  }, []);
+
+  /* ─── Savings goals actions ────────────────────── */
+  const addGoal = useCallback((goal: SavingsGoal) => {
+    setState((s) => ({ ...s, savingsGoals: [...s.savingsGoals, goal] }));
+    showToast(`Meta "${goal.title}" criada!`);
+  }, [showToast]);
+
+  const depositToGoal = useCallback((id: string, amount: number) => {
+    setState((s) => ({
+      ...s,
+      savingsGoals: s.savingsGoals.map((g) =>
+        g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g
+      ),
+    }));
+    showToast(`Deposito de ${formatCurrency(amount)} realizado!`);
+  }, [showToast]);
+
+  const deleteGoal = useCallback((id: string) => {
+    setState((s) => ({ ...s, savingsGoals: s.savingsGoals.filter((g) => g.id !== id) }));
+  }, []);
+
   if (loading) {
     return (
       <div className="app-shell">
@@ -246,6 +289,25 @@ export default function App() {
           <QuickInsights snapshot={snapshot} monthlyBudget={state.monthlyBudget} onBudgetChange={setBudget} />
         </section>
 
+        {/* Recurring Income + Smart Advisor */}
+        <RecurringIncomePanel
+          incomes={state.recurringIncomes}
+          onAdd={addRecurringIncome}
+          onDelete={deleteRecurringIncome}
+          onToggle={toggleRecurringIncome}
+        />
+
+        {/* Smart Financial Advisor */}
+        <SmartAdvisor state={state} snapshot={snapshot} monthKey={monthKey} />
+
+        {/* Cash Flow Timeline */}
+        <CashFlowTimeline
+          monthKey={monthKey}
+          transactions={state.transactions}
+          bills={state.bills}
+          recurringIncomes={state.recurringIncomes}
+        />
+
         {/* Forms */}
         <section className="forms-grid glass-layer">
           <TransactionForm onCreate={addTransaction} />
@@ -304,7 +366,13 @@ export default function App() {
             </ul>
           )}
         </section>
-
+        {/* Savings Goals */}
+        <SavingsGoals
+          goals={state.savingsGoals}
+          onAdd={addGoal}
+          onUpdate={depositToGoal}
+          onDelete={deleteGoal}
+        />
         <footer className="app-footer">
           <span>NeuroLedger — Dados salvos localmente + Supabase</span>
         </footer>
