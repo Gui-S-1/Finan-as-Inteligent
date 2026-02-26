@@ -45,7 +45,15 @@ export default function App() {
   const [monthKey, setMonthKey] = useState(getCurrentMonthKey());
   const [loading, setLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const remindedRef = useRef(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  }, []);
 
   /* ─── Initial load (async for Supabase) ──────────── */
   useEffect(() => {
@@ -87,12 +95,19 @@ export default function App() {
     [state.bills, monthKey],
   );
 
+  // All active (non-paid) bills across all months, sorted by due date
+  const allActiveBills = useMemo(
+    () => sortByDateAsc(state.bills.filter((b) => b.status !== 'paid')),
+    [state.bills],
+  );
+
   /* ─── actions (+ Supabase sync) ────────────────── */
 
   const addTransaction = useCallback((item: Transaction) => {
     setState((s) => ({ ...s, transactions: [...s.transactions, item] }));
     addTransactionDB(item);
-  }, []);
+    showToast(`Lancamento "${item.title}" adicionado!`);
+  }, [showToast]);
 
   const deleteTransaction = useCallback((id: string) => {
     setState((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
@@ -102,7 +117,11 @@ export default function App() {
   const addBill = useCallback((item: Bill) => {
     setState((s) => ({ ...s, bills: [...s.bills, item] }));
     addBillDB(item);
-  }, []);
+    // Auto-navigate to the bill's month so user sees it immediately
+    const billMonth = item.dueDate.slice(0, 7);
+    if (billMonth !== monthKey) setMonthKey(billMonth);
+    showToast(`Conta "${item.title}" agendada para ${formatDate(item.dueDate)}!`);
+  }, [monthKey, showToast]);
 
   const deleteBill = useCallback((id: string) => {
     setState((s) => ({ ...s, bills: s.bills.filter((b) => b.id !== id) }));
@@ -233,9 +252,9 @@ export default function App() {
           <BillForm onCreate={addBill} />
         </section>
 
-        {/* Bills with partial payments */}
+        {/* Bills for current month */}
         <section className="glass-card list-panel">
-          <h2 className="section-title">Contas do Mes ({monthBills.length})</h2>
+          <h2 className="section-title">Contas de {getMonthLabel(monthKey)} ({monthBills.length})</h2>
           {monthBills.length === 0 ? (
             <p className="empty-text">Nenhuma conta agendada para este mes.</p>
           ) : (
@@ -246,6 +265,19 @@ export default function App() {
             </div>
           )}
         </section>
+
+        {/* All active bills across all months */}
+        {allActiveBills.length > 0 && allActiveBills.length !== monthBills.length && (
+          <section className="glass-card list-panel">
+            <h2 className="section-title">Todas as Contas Pendentes ({allActiveBills.length})</h2>
+            <p className="empty-text" style={{ marginBottom: 8 }}>Contas de todos os meses que ainda nao foram pagas.</p>
+            <div className="bills-list">
+              {allActiveBills.map((bill) => (
+                <BillCard key={bill.id} bill={bill} onAddPayment={addPaymentToBill} onDelete={deleteBill} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Transactions list */}
         <section className="glass-card list-panel">
@@ -277,6 +309,9 @@ export default function App() {
           <span>NeuroLedger — Dados salvos localmente + Supabase</span>
         </footer>
       </main>
+
+      {/* Toast notification */}
+      {toast && <div className="toast-notification">{toast}</div>}
     </div>
   );
 }
