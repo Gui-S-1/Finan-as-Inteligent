@@ -1,4 +1,4 @@
-import { formatCurrency, billRemaining, billPaidTotal, daysUntil, getDaysInMonth } from '../lib/finance';
+import { formatCurrency, formatDate, billRemaining, billPaidTotal, daysUntil, getDaysInMonth } from '../lib/finance';
 import type { AppState, MonthlySnapshot, Category } from '../types/finance';
 import { CATEGORY_LABELS } from '../types/finance';
 
@@ -451,6 +451,84 @@ function buildTips(state: AppState, snap: MonthlySnapshot, monthKey: string): Ti
   return tips.sort((a, b) => order[a.priority] - order[b.priority]);
 }
 
+// ──────────────────────────────────────────────────────────
+// Allocation Plan Builder — builds a step-by-step plan from
+// real recurring incomes & pending bills/expenses
+// ──────────────────────────────────────────────────────────
+
+interface PlanRow {
+  date: string;
+  source: string;
+  received: number;
+  destinations: string;
+  freeAfter: number;
+}
+
+function buildAllocationPlan(state: AppState, monthKey: string): PlanRow[] | null {
+  const incomes = state.recurringIncomes.filter((r) => r.active);
+  if (incomes.length === 0) return null;
+
+  const [year, month] = monthKey.split('-').map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  // Build income events for this month
+  const incomeEvents = incomes.map((r) => {
+    const day = Math.min(r.payDay, daysInMonth);
+    const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
+    return { date: dateStr, title: r.title, amount: r.amount };
+  }).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Get pending bills for this month + next month
+  const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
+  const relevantBills = state.bills
+    .filter((b) =>
+      b.status !== 'paid' &&
+      (b.dueDate.startsWith(monthKey) || b.dueDate.startsWith(nextMonth)),
+    )
+    .map((b) => ({ id: b.id, title: b.title, date: b.dueDate, remaining: billRemaining(b) }))
+    .filter((b) => b.remaining > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (relevantBills.length === 0) return null;
+
+  // Allocate incomes to bills
+  const billLeft = new Map<string, number>();
+  relevantBills.forEach((b) => billLeft.set(b.id, b.remaining));
+
+  let runningFree = 0;
+  const rows: PlanRow[] = [];
+
+  incomeEvents.forEach((inc) => {
+    let budget = inc.amount;
+    const dests: string[] = [];
+
+    // Pay bills in order of due date
+    relevantBills.forEach((bill) => {
+      const rem = billLeft.get(bill.id) ?? 0;
+      if (rem <= 0 || budget <= 0) return;
+      const pay = Math.min(rem, budget);
+      billLeft.set(bill.id, rem - pay);
+      budget -= pay;
+      dests.push(`${formatCurrency(pay)} p/ ${bill.title}`);
+    });
+
+    runningFree += budget;
+    if (budget > 0) {
+      dests.push(`${formatCurrency(budget)} livre`);
+    }
+
+    rows.push({
+      date: inc.date,
+      source: inc.title,
+      received: inc.amount,
+      destinations: dests.join(' + '),
+      freeAfter: runningFree,
+    });
+  });
+
+  return rows;
+}
+
 const priorityClass: Record<string, string> = {
   high: 'tip-high',
   medium: 'tip-medium',
@@ -459,6 +537,7 @@ const priorityClass: Record<string, string> = {
 
 export function SmartAdvisor({ state, snapshot, monthKey }: Props) {
   const tips = buildTips(state, snapshot, monthKey);
+  const plan = buildAllocationPlan(state, monthKey);
 
   if (tips.length === 0) {
     return (
@@ -477,6 +556,52 @@ export function SmartAdvisor({ state, snapshot, monthKey }: Props) {
         </svg>
         <h2 className="section-title">Consultor Financeiro ({tips.length} dicas)</h2>
       </div>
+
+      {/* ─── Allocation Plan (from real data) ─── */}
+      {plan && plan.length > 0 && (
+        <div className="advisor-plan">
+          <div className="ap-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="18" height="18">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h3>Plano de Distribuicao — Melhor Rota</h3>
+          </div>
+          <div className="ap-table-wrap">
+            <table className="ap-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Entrada</th>
+                  <th>Destino</th>
+                  <th className="ap-tr">Livre Acumulado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plan.map((row, i) => (
+                  <tr key={i}>
+                    <td className="ap-tm">{formatDate(row.date)}</td>
+                    <td>
+                      <strong>{formatCurrency(row.received)}</strong>
+                      <span className="ap-src">{row.source}</span>
+                    </td>
+                    <td>{row.destinations}</td>
+                    <td className="ap-tr">
+                      <strong>{formatCurrency(row.freeAfter)}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="ap-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="14" height="14">
+              <path d="M13 16h-1v-4h-1m2-4h.01" />
+            </svg>
+            Este plano e gerado automaticamente com base nas suas rendas e contas. Use o Sandbox abaixo para testar cenarios alternativos.
+          </p>
+        </div>
+      )}
+
       <div className="advisor-tips">
         {tips.map((tip, i) => (
           <div key={i} className={`tip-card ${priorityClass[tip.priority]}`}>

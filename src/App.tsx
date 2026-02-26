@@ -11,6 +11,7 @@ import { QuickInsights } from './components/QuickInsights';
 import { RecurringIncomePanel } from './components/RecurringIncomePanel';
 import { ReminderBanner, requestNotificationPermission, sendBillReminder } from './components/ReminderBanner';
 import { SavingsGoals } from './components/SavingsGoals';
+import { SandboxPlanner } from './components/SandboxPlanner';
 import { SmartAdvisor } from './components/SmartAdvisor';
 import { TechBackground } from './components/TechBackground';
 import { TransactionForm } from './components/TransactionForm';
@@ -302,6 +303,9 @@ export default function App() {
 
         {/* Smart Financial Advisor */}
         <SmartAdvisor state={state} snapshot={snapshot} monthKey={monthKey} />
+
+        {/* Sandbox — area de testes financeiros */}
+        <SandboxPlanner />
 
         {/* Cash Flow Timeline */}
         <CashFlowTimeline
