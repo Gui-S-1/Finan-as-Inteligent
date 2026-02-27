@@ -3,29 +3,62 @@ export interface ChatMessage {
   content: string;
 }
 
-const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY as string;
+const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY as string | undefined;
+const isDev = import.meta.env.DEV;
+
+/** Rate limiter: max 1 request per 3 seconds */
+let lastCallTime = 0;
+const MIN_INTERVAL_MS = 3000;
+
+function getEndpoint(): string {
+  // In production, use serverless proxy (API key stays server-side)
+  // In dev, fallback to direct if env key available
+  if (!isDev) return '/api/chat';
+  if (OPENAI_KEY) return 'https://api.openai.com/v1/chat/completions';
+  return '/api/chat';
+}
 
 export async function chatCompletionStream(
   messages: ChatMessage[],
   onChunk: (text: string) => void,
 ): Promise<string> {
-  if (!OPENAI_KEY) {
-    throw new Error('Chave da OpenAI não configurada. Adicione VITE_OPENAI_KEY no .env');
+  // Rate limiting
+  const now = Date.now();
+  if (now - lastCallTime < MIN_INTERVAL_MS) {
+    throw new Error('Aguarde alguns segundos entre mensagens.');
+  }
+  lastCallTime = now;
+
+  const endpoint = getEndpoint();
+  const isDirect = endpoint.includes('openai.com');
+
+  if (isDirect && !OPENAI_KEY) {
+    throw new Error('Chave da OpenAI nao configurada. Adicione VITE_OPENAI_KEY no .env');
   }
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (isDirect && OPENAI_KEY) {
+    headers['Authorization'] = `Bearer ${OPENAI_KEY}`;
+  }
+
+  const body: Record<string, unknown> = {
+    messages,
+    max_tokens: 1000,
+  };
+
+  // Direct API needs model + stream + temperature
+  if (isDirect) {
+    body.model = 'gpt-4o-mini';
+    body.temperature = 0.7;
+    body.stream = true;
+  }
+
+  const res = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages,
-      max_tokens: 1000,
-      temperature: 0.7,
-      stream: true,
-    }),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

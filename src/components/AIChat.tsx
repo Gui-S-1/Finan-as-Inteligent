@@ -78,12 +78,14 @@ const QUICK_ACTIONS = [
   },
 ];
 
-/* ─── Simple markdown → HTML ──────────────────────────── */
+/* ─── Simple markdown → HTML (XSS-hardened) ──────────── */
 function fmtMd(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/^- (.+)$/gm, '<span class="ai-li">• $1</span>')
@@ -177,6 +179,17 @@ export function AIChat() {
         };
         setMessages((prev) => [...prev, assistantMsg]);
         setStreamingContent('');
+
+        // Save AI memory — extract key insight from response for persistent memory
+        if (username) {
+          try {
+            const { addAIMemory } = await import('../lib/auth');
+            const date = new Date().toLocaleDateString('pt-BR');
+            // Save a summary: user question + first 100 chars of AI response
+            const summary = `[${date}] Pergunta: "${text.trim().slice(0, 60)}" | Resposta: ${fullResponse.slice(0, 100)}`;
+            addAIMemory(username, summary);
+          } catch { /* non-critical */ }
+        }
       } catch (err) {
         const errorMsg: UIMessage = {
           id: crypto.randomUUID(),
