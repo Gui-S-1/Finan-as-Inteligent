@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import { AppContext } from './context/AppContext';
 import { NavDock } from './components/NavDock';
 import { TechBackground } from './components/TechBackground';
+import { LoginPage } from './components/LoginPage';
+import { Onboarding } from './components/Onboarding';
 import { requestNotificationPermission, sendBillReminder } from './components/ReminderBanner';
 import { DashboardPage } from './pages/DashboardPage';
 import { BillsPage } from './pages/BillsPage';
@@ -12,6 +14,9 @@ import { SandboxPage } from './pages/SandboxPage';
 import { CashFlowPage } from './pages/CashFlowPage';
 import { GoalsPage } from './pages/GoalsPage';
 import { exportCSV } from './lib/exportCSV';
+import { AIChat } from './components/AIChat';
+import { seedDefaultUsers, getCurrentUser, logout, saveProfile } from './lib/auth';
+import type { UserAccount, UserProfile } from './types/user';
 import {
   calculateSnapshot,
   deriveBillStatus,
@@ -40,6 +45,11 @@ import type { AppState, Bill, Payment, RecurringIncome, SavingsGoal, Transaction
 const blankState: AppState = { transactions: [], bills: [], monthlyBudget: 0, recurringIncomes: [], savingsGoals: [] };
 
 export default function App() {
+  /* ─── Auth state ─────────────────────────────────── */
+  const [authUser, setAuthUser] = useState<UserAccount | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+
   const [state, setState] = useState<AppState>(blankState);
   const [monthKey, setMonthKey] = useState(getCurrentMonthKey());
   const [loading, setLoading] = useState(true);
@@ -54,13 +64,27 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
+  /* ─── Seed users & check session on mount ─────── */
+  useEffect(() => {
+    seedDefaultUsers();
+    const existing = getCurrentUser();
+    if (existing) {
+      setAuthUser(existing);
+      if (!existing.profile?.onboardingComplete) {
+        setNeedsOnboarding(true);
+      }
+    }
+    setAuthChecked(true);
+  }, []);
+
   /* ─── Initial load (async for Supabase) ──────────── */
   useEffect(() => {
+    if (!authUser || needsOnboarding) return;
     loadState().then((s) => {
       setState(s);
       setLoading(false);
     });
-  }, []);
+  }, [authUser, needsOnboarding]);
 
   /* ─── Persist on change (after initial load) ──────── */
   useEffect(() => {
@@ -211,6 +235,96 @@ export default function App() {
     addGoal, depositToGoal, deleteGoal, showToast, exportData,
   ]);
 
+  /* ─── Auth handlers ──────────────────────────── */
+  const handleLogin = useCallback((user: UserAccount) => {
+    setAuthUser(user);
+    if (!user.profile?.onboardingComplete) {
+      setNeedsOnboarding(true);
+    } else {
+      setNeedsOnboarding(false);
+    }
+  }, []);
+
+  const handleOnboardingComplete = useCallback((profile: UserProfile) => {
+    if (!authUser) return;
+    saveProfile(authUser.credentials.username, profile);
+    setAuthUser({ ...authUser, profile });
+    setNeedsOnboarding(false);
+
+    // Auto-create recurring income from profile
+    const income = profile.income;
+    const freqMap: Record<string, 'monthly' | 'biweekly' | 'weekly'> = {
+      monthly: 'monthly',
+      biweekly: 'biweekly',
+      weekly: 'weekly',
+      daily: 'weekly',
+    };
+    if (income.amount > 0) {
+      const ri = {
+        id: crypto.randomUUID(),
+        title: income.type === 'daily' ? 'Diaria' : 'Salario',
+        amount: income.type === 'daily'
+          ? income.amount * (income.workDays?.length ?? 5) * 4.33
+          : income.amount,
+        payDay: typeof income.payDay === 'number' ? income.payDay : 5,
+        frequency: freqMap[income.type] ?? 'monthly',
+        active: true,
+      };
+      setState((s) => ({ ...s, recurringIncomes: [...s.recurringIncomes, ri] }));
+    }
+
+    // Auto-create bills from fixed expenses
+    const now = new Date();
+    for (const exp of profile.fixedExpenses) {
+      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const dayStr = String(exp.dueDay).padStart(2, '0');
+      const bill = {
+        id: crypto.randomUUID(),
+        title: exp.title,
+        amount: exp.amount,
+        dueDate: `${month}-${dayStr}`,
+        type: 'pay' as const,
+        category: exp.category as any,
+        status: 'pending' as const,
+        payments: [],
+      };
+      setState((s) => ({ ...s, bills: [...s.bills, bill] }));
+    }
+  }, [authUser]);
+
+  const handleLogout = useCallback(() => {
+    logout();
+    setAuthUser(null);
+    setNeedsOnboarding(false);
+    setState(blankState);
+    setLoading(true);
+  }, []);
+
+  if (!authChecked) {
+    return (
+      <div className="app-shell">
+        <TechBackground />
+        <div className="loading-screen">
+          <div className="loading-ring" />
+          <span>Verificando sessao...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
+  if (needsOnboarding) {
+    return (
+      <Onboarding
+        username={authUser.credentials.username}
+        onComplete={handleOnboardingComplete}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="app-shell">
@@ -227,6 +341,18 @@ export default function App() {
     <AppContext.Provider value={ctx}>
       <div className="app-shell">
         <TechBackground />
+        {/* User header bar */}
+        <div className="user-bar">
+          <div className="user-bar-info">
+            <img src="/icarus.jpg" alt="Icarus" className="user-bar-logo" />
+            <span className="user-bar-name">{authUser.profile?.firstName ?? authUser.credentials.username}</span>
+          </div>
+          <button className="user-bar-logout" onClick={handleLogout} title="Sair">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="16" height="16">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+            </svg>
+          </button>
+        </div>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/contas" element={<BillsPage />} />
@@ -237,6 +363,7 @@ export default function App() {
           <Route path="/metas" element={<GoalsPage />} />
         </Routes>
         <NavDock />
+        <AIChat />
         {toast && <div className="toast-notification">{toast}</div>}
       </div>
     </AppContext.Provider>

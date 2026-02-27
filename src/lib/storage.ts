@@ -6,7 +6,15 @@ import { deriveBillStatus } from './finance';
    Hybrid storage: Supabase (primary) + localStorage (cache/fallback)
    ────────────────────────────────────────────────────── */
 
-const LS_KEY = 'neuro-ledger-v2';
+const LS_PREFIX = 'neuro-ledger-v2';
+
+/** Per-user key — if no user default to legacy key */
+function lsKey(): string {
+  try {
+    const u = localStorage.getItem('neuro-current-user');
+    return u ? `${LS_PREFIX}::${u}` : LS_PREFIX;
+  } catch { return LS_PREFIX; }
+}
 
 const blank: AppState = { transactions: [], bills: [], monthlyBudget: 0, recurringIncomes: [], savingsGoals: [] };
 
@@ -14,7 +22,7 @@ const blank: AppState = { transactions: [], bills: [], monthlyBudget: 0, recurri
 
 function lsLoad(): AppState {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(lsKey());
     if (!raw) return blank;
     const p = JSON.parse(raw) as Partial<AppState>;
     return {
@@ -37,7 +45,7 @@ function lsLoad(): AppState {
 }
 
 function lsSave(s: AppState) {
-  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  localStorage.setItem(lsKey(), JSON.stringify(s));
 }
 
 /* ─── Supabase helpers ────────────────────────────────── */
@@ -175,5 +183,5 @@ export async function deleteAllDataDB() {
 }
 
 export function deleteAllDataLocal() {
-  localStorage.removeItem(LS_KEY);
+  localStorage.removeItem(lsKey());
 }
