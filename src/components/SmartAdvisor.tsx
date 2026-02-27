@@ -23,7 +23,11 @@ interface Tip {
 function buildTips(state: AppState, snap: MonthlySnapshot, monthKey: string): Tip[] {
   const tips: Tip[] = [];
   const incomes = state.recurringIncomes.filter((r) => r.active);
-  const totalSalary = incomes.reduce((s, r) => s + r.amount, 0);
+  const totalSalary = incomes.reduce((s, r) => {
+    if (r.frequency === 'monthly') return s + r.amount;
+    if (r.frequency === 'biweekly') return s + r.amount * 2;
+    return s + r.amount * 4; // weekly
+  }, 0);
   const pendingBills = state.bills.filter((b) => b.status !== 'paid' && b.dueDate.startsWith(monthKey));
   const totalPending = pendingBills.reduce((s, b) => s + billRemaining(b), 0);
 

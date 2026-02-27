@@ -81,7 +81,7 @@ export function calculateSnapshot(
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const totalSpent = expensesTotal + billsPaidSoFar;
-  const budgetUsagePercent = monthlyBudget > 0 ? Math.min((totalSpent / monthlyBudget) * 100, 100) : 0;
+  const budgetUsagePercent = monthlyBudget > 0 ? (totalSpent / monthlyBudget) * 100 : 0;
 
   /* category breakdown (expenses + bills-to-pay) */
   const catMap = new Map<Category, number>();
@@ -124,14 +124,14 @@ export function buildDailyBalanceSeries(
   const map = new Map<number, number>();
 
   transactions.forEach((t) => {
-    const day = new Date(t.date).getDate();
+    const day = new Date(t.date + 'T00:00:00').getDate();
     const signed = t.type === 'income' ? t.amount : -t.amount;
     map.set(day, (map.get(day) ?? 0) + signed);
   });
 
   bills.forEach((b) => {
     if (b.status === 'paid') return;
-    const day = new Date(b.dueDate).getDate();
+    const day = new Date(b.dueDate + 'T00:00:00').getDate();
     const signed = b.type === 'receive' ? billRemaining(b) : -billRemaining(b);
     map.set(day, (map.get(day) ?? 0) + signed);
   });

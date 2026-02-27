@@ -22,14 +22,14 @@ export function CalendarTimeline({ monthKey, bills, transactions }: CalendarTime
   }
 
   monthBills.forEach((b) => {
-    const day = new Date(b.dueDate).getDate();
+    const day = new Date(b.dueDate + 'T00:00:00').getDate();
     const m = dayMarkers.get(day)!;
     if (b.type === 'pay' && b.status !== 'paid') m.pay++;
     if (b.type === 'receive' && b.status !== 'paid') m.receive++;
   });
 
   monthTx.forEach((t) => {
-    const day = new Date(t.date).getDate();
+    const day = new Date(t.date + 'T00:00:00').getDate();
     const m = dayMarkers.get(day)!;
     if (t.type === 'income') m.income++;
     else m.expense++;

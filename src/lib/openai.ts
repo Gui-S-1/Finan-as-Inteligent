@@ -70,7 +70,11 @@ export async function chatCompletionStream(
     throw new Error(msg);
   }
 
-  const reader = res.body!.getReader();
+  if (!res.body) {
+    throw new Error('Resposta vazia do servidor');
+  }
+
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let full = '';
   let buffer = '';

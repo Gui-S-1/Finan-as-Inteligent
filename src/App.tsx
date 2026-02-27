@@ -78,12 +78,28 @@ export default function App() {
   }, []);
 
   /* ─── Initial load (async for Supabase) ──────────── */
+  const justOnboarded = useRef(false);
   useEffect(() => {
     if (!authUser || needsOnboarding) return;
-    loadState().then((s) => {
-      setState(s);
-      setLoading(false);
-    });
+    loadState()
+      .then((s) => {
+        if (justOnboarded.current) {
+          // Merge: keep onboarding-created data that loadState would overwrite
+          justOnboarded.current = false;
+          setState((prev) => ({
+            ...s,
+            recurringIncomes: prev.recurringIncomes.length ? prev.recurringIncomes : s.recurringIncomes,
+            bills: prev.bills.length ? prev.bills : s.bills,
+          }));
+        } else {
+          setState(s);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        // Fallback: use whatever state we have
+        setLoading(false);
+      });
   }, [authUser, needsOnboarding]);
 
   /* ─── Persist on change (after initial load) ──────── */
@@ -249,6 +265,7 @@ export default function App() {
     if (!authUser) return;
     saveProfile(authUser.credentials.username, profile);
     setAuthUser({ ...authUser, profile });
+    justOnboarded.current = true;
     setNeedsOnboarding(false);
 
     // Auto-create recurring income from profile

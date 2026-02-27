@@ -31,7 +31,11 @@ const LEVELS = [
 export function calculateIndices(state: AppState, snapshot: MonthlySnapshot): FinancialIndices {
   const totalSalary = state.recurringIncomes
     .filter((r) => r.active)
-    .reduce((s, r) => s + r.amount, 0);
+    .reduce((s, r) => {
+      if (r.frequency === 'monthly') return s + r.amount;
+      if (r.frequency === 'biweekly') return s + r.amount * 2;
+      return s + r.amount * 4; // weekly
+    }, 0);
 
   const monthBills = state.bills.filter((b) => b.dueDate.startsWith(snapshot.monthKey));
   const paidBills = monthBills.filter((b) => b.status === 'paid');
@@ -179,7 +183,11 @@ export function buildFinancialContext(
   profile?: UserProfile | null,
 ): string {
   const incomes = state.recurringIncomes.filter((r) => r.active);
-  const totalSalary = incomes.reduce((s, r) => s + r.amount, 0);
+  const totalSalary = incomes.reduce((s, r) => {
+    if (r.frequency === 'monthly') return s + r.amount;
+    if (r.frequency === 'biweekly') return s + r.amount * 2;
+    return s + r.amount * 4; // weekly
+  }, 0);
   const pendingBills = state.bills.filter(
     (b) => b.status !== 'paid' && b.dueDate.startsWith(monthKey),
   );
@@ -233,7 +241,7 @@ export function buildFinancialContext(
 
   if (goals.length > 0) {
     lines.push(
-      `Metas: ${goals.map((g) => `${g.title} ${formatCurrency(g.currentAmount)}/${formatCurrency(g.targetAmount)} (${((g.currentAmount / g.targetAmount) * 100).toFixed(0)}%)`).join(', ')}`,
+      `Metas: ${goals.map((g) => `${g.title} ${formatCurrency(g.currentAmount)}/${formatCurrency(g.targetAmount)} (${((g.currentAmount / Math.max(g.targetAmount, 1)) * 100).toFixed(0)}%)`).join(', ')}`,
     );
   }
 
